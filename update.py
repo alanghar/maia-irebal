@@ -1,18 +1,11 @@
-import requests
 import csv
 import json
-import pprint
-import string
-import random
-from uuid import uuid4
 import pandas as pd
 import robobrowser
 import re
 import os
-import sys
 import time
 import requests
-import pprint
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -25,7 +18,7 @@ from io import StringIO
 def download_hare_file():
     # curl -X POST --header 'X-OpenAM-Username: scott@maiawealth.com' --header 'X-OpenAM-Password: <password>'
     # https://sso.morningstar.com/sso/json/msusers/authenticate?rme=true -v
-    browser = robobrowser.RoboBrowser()
+    browser = robobrowser.RoboBrowser(parser='html5lib')
     browser.open('https://msi.morningstar.com/Login.aspx')
     form = browser.get_forms()[0]
     form.fields['email_addr'].value = 'scott@maiawealth.com'
@@ -44,7 +37,6 @@ def prepare_upload_file(hare_file):
     df = df[1:] #take the data less the header row
     df.columns = new_header #set the header row as the df header
 
-    #print(df)
     df = df.ix[:, ['Ticker', '% of Portfolio']]
     df.insert(0, 'Model Name', 'Hare')
     df.insert(1, 'Model Description', '')
@@ -54,7 +46,6 @@ def prepare_upload_file(hare_file):
     df.insert(5, 'Maximum Percent', 'global')
 
     df['Target Percent'] = df['Target Percent'].apply(lambda x: round(float(x), 1))
-    total = sum(df['Target Percent'])
 
     modelmap = {}
     target_sum = 0
@@ -81,7 +72,7 @@ def prepare_upload_file(hare_file):
             {
                 "modelId": 12842995,
                 "modelName": "Hare",
-                "versionId": 1,
+                "versionId": 5,
                 "securityWithTargetPerc": {},
                 "secRebalBandsMap": modelmap,
                 "isBlendedModel": False,
@@ -95,14 +86,15 @@ def prepare_upload_file(hare_file):
                 "isSubscribedModel": False
     }]}
 
-    return df.to_csv(index=False), json.dumps(model)
+    return df.to_csv(index=False), model
 
 
 def get_upload_cookies():
     username = 'smarek'
     password = '2$M@QMyDi!Z6Z5'
     chrome_options = Options()
-    #chrome_options.add_argument("--headless")
+    # chrome_options.add_argument("--headless")
+    # chrome_options.add_argument('--window-size=1920,1080')
 
     driver = webdriver.Chrome(executable_path=os.path.abspath("../chromedriver"), chrome_options=chrome_options)
     driver.implicitly_wait(5)
@@ -113,7 +105,7 @@ def get_upload_cookies():
     driver.find_element_by_id('password').send_keys(password)
     driver.find_element_by_id('loginBtn').send_keys(Keys.ENTER)
     driver.switch_to.frame(0)
-    driver.find_element(By.XPATH, '//*[@id="pageContainer"]/div[1]/table/tbody/tr/td[2]/table/tbody/tr/td[1]/a[7]').click()
+    driver.find_element(By.LINK_TEXT, 'iRebal').click()
     WebDriverWait(driver, 10).until(lambda d: len(d.window_handles) > 1)
     while True:
         try:
@@ -122,45 +114,25 @@ def get_upload_cookies():
         except:
             time.sleep(0.1)
 
-    print('Looking for loading overlay')
     WebDriverWait(driver, 20).until(EC.visibility_of_element_located((By.CLASS_NAME, 'loading')))
     WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, 'CreateAndConfigure_text')))
-    print('Overlay finished')
-    #driver.get('https://irebal-ct.advisorservices.com/irebal/model/inventory')
-    #driver.find_element_by_id('btnImportModel_label').click()
     cookies = driver.get_cookies()
-    #time.sleep(1000000)
     driver.close()
-    pprint.pprint(cookies)
     cookie_string = '; '.join([f'{x["name"]}={x["value"]}' for x in cookies])
     return cookie_string
 
 
 def upload_csv(cookie_string, csv_data):
-    boundary = '---------------------------' + ''.join(random.choice(string.digits) for _ in range(27))
-    payload = f"""--{boundary}
-Content-Disposition: form-data; name="securityMdlDt"
+    payload = {'securityMdlDt': 'on',
+               'modelFileUpload': 'upload.csv',
+               'ImportModel': ('upload.csv', csv_data, 'text/csv')}
 
-on
---{boundary}
-Content-Disposition: form-data; name="modelFileUpload"
-
-upload.csv
---{boundary}
-Content-Disposition: form-data; name="ImportModel"; filename="upload.csv"
-Content-Type: text/csv
-
-{csv_data}
---{boundary}--
-"""
     headers = {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
             'Accept-Language': 'en-US,en;q=0.9',
             'Cache-Control': 'max-age=0',
             'Connection': 'keep-alive',
-            'Content-Length': str(len(payload)),
-            'Content-Type': f'multipart/form-data; boundary={boundary}',
             'Cookie': cookie_string,
             'Host': 'irebal-ct.advisorservices.com',
             'Origin': 'https://irebal-ct.advisorservices.com',
@@ -168,15 +140,9 @@ Content-Type: text/csv
             'Upgrade-Insecure-Requests': '1',
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.79 Safari/537.36',
     }
-    print('Making request')
-
-    for k, v in headers.items():
-        print(f'{k}:{v}')
-    print(f'Payload:\n{payload}')
     resp = requests.request('POST', 'https://irebal-ct.advisorservices.com/irebal/model/import=model', headers=headers,
-                            data=payload)
-    print(resp.text)
-    print(resp)
+                            files=payload)
+    return re.findall(r'"versionId":([^,]+),', resp.text)[0]
 
 
 def upload_json(cookie_string, json_data):
@@ -193,17 +159,18 @@ def upload_json(cookie_string, json_data):
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.87 Safari/537.36',
         'X-Requested-With': 'XMLHttpRequest'
     }
-    print('Making request')
-    for k, v in headers.items():
-        print(f'{k}:{v}')
     resp = requests.request('POST', 'https://irebal-ct.advisorservices.com/irebal/model/saveimport', headers=headers,
                             data=json_data)
-    print(resp.text)
-    print(resp)
+    resp_data = json.loads(resp.text)
+    assert resp_data.get('responseStatus', None) == 'SUCCESS', f'Model not successfully imported. Response:{resp}\n{resp.text}'
 
 
 hare_file = download_hare_file()
 csv_data, json_data = prepare_upload_file(hare_file)
 cookie_data = get_upload_cookies()
-upload_csv(cookie_data, csv_data)
-upload_json(cookie_data, json_data)
+version_id = upload_csv(cookie_data, csv_data)
+json_data['modelsToAdd'][0]['versionId'] = version_id
+for security, values in json_data['modelsToAdd'][0]['secRebalBandsMap'].items():
+    print(f'{security}:\t{values["targetPercent"]}%')
+upload_json(cookie_data, json.dumps(json_data))
+print('\nSuccess!')
