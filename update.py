@@ -1,5 +1,6 @@
 import csv
 import json
+import datetime
 import pandas as pd
 import robobrowser
 import re
@@ -15,14 +16,16 @@ from selenium.webdriver.support import expected_conditions as EC
 from io import StringIO
 
 
+MORNINGSTAR_PASSWORD = ''
+TD_PASSWORD = ''
+
+
 def download_hare_file():
-    # curl -X POST --header 'X-OpenAM-Username: scott@maiawealth.com' --header 'X-OpenAM-Password: <password>'
-    # https://sso.morningstar.com/sso/json/msusers/authenticate?rme=true -v
     browser = robobrowser.RoboBrowser(parser='html5lib')
     browser.open('https://msi.morningstar.com/Login.aspx')
     form = browser.get_forms()[0]
     form.fields['email_addr'].value = 'scott@maiawealth.com'
-    form.fields['password'].value = 'DoWork2511'
+    form.fields['password'].value = MORNINGSTAR_PASSWORD
     browser.submit_form(form)
 
     browser.open('https://msi.morningstar.com/Export.aspx?type=HarePort')
@@ -91,7 +94,6 @@ def prepare_upload_file(hare_file):
 
 def get_upload_cookies():
     username = 'smarek'
-    password = '2$M@QMyDi!Z6Z5'
     chrome_options = Options()
     # chrome_options.add_argument("--headless")
     # chrome_options.add_argument('--window-size=1920,1080')
@@ -102,7 +104,7 @@ def get_upload_cookies():
     driver.find_element_by_name('USERID').clear()
     driver.find_element_by_name('USERID').send_keys(username)
     driver.find_element_by_id('password').clear()
-    driver.find_element_by_id('password').send_keys(password)
+    driver.find_element_by_id('password').send_keys(TD_PASSWORD)
     driver.find_element_by_id('loginBtn').send_keys(Keys.ENTER)
     driver.switch_to.frame(0)
     driver.find_element(By.LINK_TEXT, 'iRebal').click()
@@ -165,6 +167,7 @@ def upload_json(cookie_string, json_data):
     assert resp_data.get('responseStatus', None) == 'SUCCESS', f'Model not successfully imported. Response:{resp}\n{resp.text}'
 
 
+start_time = datetime.datetime.now()
 hare_file = download_hare_file()
 csv_data, json_data = prepare_upload_file(hare_file)
 cookie_data = get_upload_cookies()
@@ -173,4 +176,6 @@ json_data['modelsToAdd'][0]['versionId'] = version_id
 for security, values in json_data['modelsToAdd'][0]['secRebalBandsMap'].items():
     print(f'{security}:\t{values["targetPercent"]}%')
 upload_json(cookie_data, json.dumps(json_data))
-print('\nSuccess!')
+end_time = datetime.datetime.now()
+print(f'\nSuccess! Took {end_time - start_time} to run.')
+print('This super cool script brought to you by Alex Langhart :)')
