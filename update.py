@@ -98,7 +98,7 @@ def get_upload_cookies():
     # chrome_options.add_argument("--headless")
     # chrome_options.add_argument('--window-size=1920,1080')
 
-    driver = webdriver.Chrome(executable_path=os.path.abspath("../chromedriver"), chrome_options=chrome_options)
+    driver = webdriver.Chrome(executable_path=os.path.abspath("./chromedriver"), chrome_options=chrome_options)
     driver.implicitly_wait(5)
     driver.get("https://www.advisorservices.com/")
     driver.find_element_by_name('USERID').clear()
