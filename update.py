@@ -67,7 +67,7 @@ def prepare_upload_file(hare_file):
                             'minPercent': 'global', 'maxPercent': 'global', 'isValidRebalBand': True}
 
     cash_pct = round(100.0 - target_sum, 1)
-    assert target_sum + cash_pct == 100.0, f'Target percents total {target_sum + cash_pct}'
+    assert abs(100.0 - (target_sum + cash_pct)) <= 0.001, f'Target percents total {target_sum + cash_pct}'
     modelmap['$CASH']['targetPercent'] = cash_pct
     df.at[cash_index, 'Target Percent'] = cash_pct
     model = {
